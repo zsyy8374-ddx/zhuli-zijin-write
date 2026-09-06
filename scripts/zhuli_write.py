@@ -11,6 +11,8 @@
   --date YYYYMMDD：文件里没有日期列时，统一用这个日期填所有记录；
                    不传 --date 且文件无日期列时，会交互式提示输入日期。
 
+  日期确定优先级：文件名中的 8 位日期 > 文件里的「日期」列 > --date 参数 > 交互式询问。
+
 支持两种输入（自动识别）：
   1. 通达信导出的「.xls」——实为 Tab 分隔文本（GBK）
   2. 真正的 Excel「.xlsm / .xlsx」——zip 结构
@@ -50,6 +52,18 @@ def _num(x):
         return float(x)
     except (ValueError, TypeError):
         return None
+
+
+def extract_date_from_filename(path):
+    """从文件名提取 8 位日期（yyyyMMdd 或 yyyy-MM-dd 等），无则返回 None。"""
+    base = os.path.basename(path)
+    m = re.search(r'(20\d{2})[-_./]?(\d{2})[-_./]?(\d{2})', base)
+    if not m:
+        return None
+    y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    if 1 <= mo <= 12 and 1 <= d <= 31:
+        return y * 10000 + mo * 100 + d
+    return None
 
 
 # ---------- 解析 .xlsx / .xlsm ----------
@@ -268,10 +282,14 @@ def main():
         print('文件没有数据行')
         return 2
 
-    # 判断是否有日期列；无则取 --date 或交互式询问
-    has_date = FIELD_DT in data[0]
+    # 日期优先级：文件名 > 日期列 > --date > 交互式询问
     default_date = None
-    if not has_date:
+    filename_date = extract_date_from_filename(path)
+    has_date = FIELD_DT in data[0]
+    if filename_date is not None:
+        default_date = filename_date
+        print(f'从文件名提取日期: {default_date}')
+    elif not has_date:
         if date_arg:
             default_date = date_arg
         else:
