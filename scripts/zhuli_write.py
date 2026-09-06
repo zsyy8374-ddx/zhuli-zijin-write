@@ -14,7 +14,8 @@
 
 写入结构（参考 ID=101 竞价最大占比）：
   每条 8 字节 = 日期(uint32 小端, 十进制 yyyymmdd) + 数值(float32 小端)
-  同日替换、按日期升序；已存在文件合并（不删旧数据），不存在则创建。
+  同日替换、按日期升序；已存在文件合并（不删其他日期），不存在则创建。
+  覆盖语义：本次导出里的日期会【覆盖】旧数据 —— 不在本次导出里的股票，其当日旧记录会被清除。
 
 文件命名：{市场标志}_{代码}.dat
   市场标志：6/8 开头→1（沪/科创/板块指数）；0/3 开头→0（深/创业）；9 开头→2（北交所）
@@ -145,20 +146,60 @@ def build(data):
 def write_files(data, subdir, dry_run=False):
     d = os.path.join(SIG, subdir)
     os.makedirs(d, exist_ok=True)
-    written = created = appended = 0
-    for key, recs in data.items():
-        path = os.path.join(d, key + '.dat')
-        exists = os.path.exists(path)
-        if dry_run:
-            # 预览模式不读文件、不写盘，只统计
-            if exists:
+
+    # 本次要写的日期（作为“覆盖/清除”目标）
+    clear_dates = set()
+    for recs in data.values():
+        clear_dates.update(recs.keys())
+
+    if dry_run:
+        # 预览模式不读文件、不写盘，只统计
+        written = created = appended = 0
+        for key in data.keys():
+            if os.path.exists(os.path.join(d, key + '.dat')):
                 appended += 1
             else:
                 created += 1
             written += 1
-            continue
+        return written, created, appended, len(clear_dates), 0, 0
+
+    new_keys = set(data.keys())
+    cleared = 0
+    removed_empty = 0
+
+    # 第一步：覆盖当天数据 —— 对【不在本次导出里的股票】的文件，删除这些日期记录
+    # （在本次导出里的股票，下面写盘时 merged.update 会直接覆盖同日）
+    if clear_dates:
+        for fname in os.listdir(d):
+            if not fname.endswith('.dat'):
+                continue
+            key = fname[:-4]
+            if key in new_keys:
+                continue
+            path = os.path.join(d, fname)
+            with open(path, 'rb') as f:
+                raw = f.read()
+            recs = {}
+            for i in range(0, len(raw) // 8 * 8, 8):
+                dd, vv = struct.unpack('<If', raw[i:i + 8])
+                recs[dd] = vv
+            keep = {dd: vv for dd, vv in recs.items() if dd not in clear_dates}
+            if len(keep) != len(recs):
+                cleared += 1
+                if keep:
+                    with open(path, 'wb') as f:
+                        for dd in sorted(keep):
+                            f.write(struct.pack('<If', dd, keep[dd]))
+                else:
+                    os.remove(path)
+                    removed_empty += 1
+
+    # 第二步：写入新数据（同日替换）
+    written = created = appended = 0
+    for key, recs in data.items():
+        path = os.path.join(d, key + '.dat')
         merged = {}
-        if exists:
+        if os.path.exists(path):
             with open(path, 'rb') as f:
                 raw = f.read()
             for i in range(0, len(raw) // 8 * 8, 8):
@@ -172,7 +213,7 @@ def write_files(data, subdir, dry_run=False):
             for dd in sorted(merged):
                 f.write(struct.pack('<If', dd, merged[dd]))
         written += 1
-    return written, created, appended
+    return written, created, appended, len(clear_dates), cleared, removed_empty
 
 
 def main():
@@ -190,13 +231,14 @@ def main():
     data = load_rows(path)
     d201, d202 = build(data)
 
-    w201, c201, a201 = write_files(d201, 'signals_user_201', dry_run)
-    w202, c202, a202 = write_files(d202, 'signals_user_202', dry_run)
+    w201, c201, a201, nd1, cl201, rm201 = write_files(d201, 'signals_user_201', dry_run)
+    w202, c202, a202, nd2, cl202, rm202 = write_files(d202, 'signals_user_202', dry_run)
 
     tag = '[dry-run 预览]' if dry_run else '[已写入]'
-    print(f'{tag} 主力净额(ID=201): {w201} 个文件 (新建 {c201}, 追加合并 {a201})')
-    print(f'{tag} 主买净额(ID=202): {w202} 个文件 (新建 {c202}, 追加合并 {a202})')
+    print(f'{tag} 主力净额(ID=201): {w201} 个文件 (新建 {c201}, 覆盖合并 {a201})')
+    print(f'{tag} 主买净额(ID=202): {w202} 个文件 (新建 {c202}, 覆盖合并 {a202})')
     if not dry_run:
+        print(f'覆盖当天数据：201 清理 {cl201} 个文件(删除空文件 {rm201})，202 清理 {cl202} 个(删除空文件 {rm202})')
         print('写入完成。重启通达信后可在自定义数据中查看 201「主力净额」/ 202「主买净额」。')
     return 0
 
