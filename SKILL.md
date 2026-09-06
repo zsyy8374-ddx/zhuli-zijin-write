@@ -36,6 +36,18 @@ python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文�
 3. 文件里的「日期」列
 4. 交互式问董哥要日期（统一填所有记录）
 
+## Windows 本地提速跑法（~10秒，比 WSL 快 5 倍）
+
+脚本支持双平台（自动识别 Windows/WSL 路径）。Windows 本地 Python 3.14 直跑：
+
+```powershell
+& "C:\Users\Lenovo\AppData\Local\Python\bin\python.exe" "C:\Users\Lenovo\Downloads\zhuli_write.py" "D:\...\xxx.xls" --date 20260904
+```
+
+- 脚本固定同步到 `C:\Users\Lenovo\Downloads\zhuli_write.py`（更新后重新复制）
+- WSL 的 `\\wsl$` UNC 路径在董哥机器上未启用，不可用，只能走复制
+
+
 **校验（跑前自动检查）**：
 - 文件缺「主力净额」或「主买净额」列 → 报错提醒换文件
 - 文件名/`--date` 得到的日期**不是交易日**（查上证指数日线无记录）→ 警告提醒换日期
