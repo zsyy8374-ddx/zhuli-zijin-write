@@ -41,6 +41,11 @@ FIELD_ZL = '主力净额'
 FIELD_ZM = '主买净额'
 FIELD_DT = '日期'
 
+# 默认输入文件夹（董哥 2026-09-06 指定）
+DEFAULT_DIR = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/T0002/export'
+# 交易日判断用：上证指数日线（有记录=交易日）
+SH_INDEX_DAY = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/vipdoc/sh/lday/sh000001.day'
+
 
 def market_flag(code: str) -> int:
     return {'6': 1, '8': 1, '0': 0, '3': 0, '9': 2}.get(code[0], -1)
@@ -64,6 +69,26 @@ def extract_date_from_filename(path):
     if 1 <= mo <= 12 and 1 <= d <= 31:
         return y * 10000 + mo * 100 + d
     return None
+
+
+def to_wsl_path(p):
+    """Windows 盘符路径 D:/... 或 D:\\... -> /mnt/d/...（WSL 下运行用）。"""
+    m = re.match(r'^([A-Za-z]):[\\/](.*)$', p)
+    if m:
+        return '/mnt/' + m.group(1).lower() + '/' + m.group(2).replace('\\', '/')
+    return p
+
+
+def is_trading_day(date_int):
+    """判断 date_int(yyyymmdd) 是否交易日：查上证指数日线当天有无记录。"""
+    try:
+        raw = open(SH_INDEX_DAY, 'rb').read()
+    except OSError:
+        return True  # 无法判断时放行
+    for i in range(0, len(raw) // 32 * 32, 32):
+        if struct.unpack('<I', raw[i:i + 4])[0] == date_int:
+            return True
+    return False
 
 
 # ---------- 解析 .xlsx / .xlsm ----------
@@ -150,9 +175,11 @@ def build(data, default_date=None):
     d202 = defaultdict(dict)
     for row in data:
         code = (row.get(FIELD_CODE) or '').strip()
+        # 清理代码：去掉 =、" 等非数字（Excel 导出 "="920289"" 包裹保前导0）
+        code = re.sub(r'\D', '', code)
         if not code:
             continue
-        code = ('000000' + code)[-6:]
+        code = code[-6:].zfill(6)  # 取末 6 位并补前导 0
         fl = market_flag(code)
         if fl < 0:
             continue
@@ -273,6 +300,9 @@ def main():
         print('用法: python3 zhuli_write.py <excel文件路径> [--date YYYYMMDD] [--dry-run]')
         return 2
     path = args[0]
+    path = to_wsl_path(path)
+    if not os.path.isabs(path):
+        path = os.path.join(DEFAULT_DIR, os.path.basename(path))
     if not os.path.exists(path):
         print(f'文件不存在: {path}')
         return 2
@@ -280,6 +310,12 @@ def main():
     data = load_rows(path)
     if not data:
         print('文件没有数据行')
+        return 2
+
+    # 校验必需列：主力净额 和 主买净额 都要有
+    missing = [n for n in (FIELD_ZL, FIELD_ZM) if n not in data[0]]
+    if missing:
+        print(f'错误：文件缺少列 {chr(34)}{chr(34).join(missing)}{chr(34)}，请换一个含「主力净额」和「主买净额」列的文件')
         return 2
 
     # 日期优先级：文件名 > 日期列 > --date > 交互式询问
@@ -299,6 +335,17 @@ def main():
             return 2
         default_date = int(default_date)
         print(f'使用日期: {default_date}')
+
+    # 交易日校验（只针对文件名/--date/交互得到的单一日历日）
+    if default_date is not None and not is_trading_day(default_date):
+        print(f'⚠️ 警告：{default_date} 不是交易日（无行情数据）')
+        new = input('请输入正确日期(YYYYMMDD)，直接回车退出: ').strip()
+        if new.isdigit() and len(new) == 8:
+            default_date = int(new)
+            print(f'改用日期: {default_date}')
+        else:
+            print('已取消')
+            return 2
 
     d201, d202 = build(data, default_date)
 
