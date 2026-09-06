@@ -20,9 +20,14 @@ description: 主力资金写入。把通达信导出的「主力资金」Excel �
 ```bash
 python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文件路径>"
 
+# 文件里没有日期列：指定日期统一填
+python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文件路径>" --date 20260906
+
 # 预览不写盘（先看数量对不对）
 python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文件路径>" --dry-run
 ```
+
+**日期处理**：文件有「日期」列 → 用列内日期；文件没有「日期」列 → 用 `--date` 指定的日期（或交互式问董哥要日期），所有记录统一填这个日期。
 
 ## 输入格式（自动识别）
 
@@ -59,4 +64,4 @@ python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文�
 
 ## 更新记录
 
-- 2026-09-06 v1.1：改为「覆盖当天数据」语义 —— 本次导出的日期会覆盖旧数据，不在导出里的股票当日旧记录清除（董哥 13:55 确认）；v1.0 支持 .xls(TSV)/.xlsm/.xlsx 自动识别、二进制序列写入 201/202
+- 2026-09-06 v1.2：支持文件无「日期」列 —— 用 `--date YYYYMMDD` 或交互式问董哥要日期，统一填；v1.1 改为「覆盖当天数据」语义
