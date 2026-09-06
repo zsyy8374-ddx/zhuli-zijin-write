@@ -11,7 +11,7 @@
   --date YYYYMMDD：文件里没有日期列时，统一用这个日期填所有记录；
                    不传 --date 且文件无日期列时，会交互式提示输入日期。
 
-  日期确定优先级：文件名中的 8 位日期 > 文件里的「日期」列 > --date 参数 > 交互式询问。
+  日期确定优先级：--date 参数 > 文件名中的 8 位日期 > 文件里的「日期」列 > 交互式询问。
 
 支持两种输入（自动识别）：
   1. 通达信导出的「.xls」——实为 Tab 分隔文本（GBK）
@@ -319,17 +319,21 @@ def main():
         return 2
 
     # 日期优先级：文件名 > 日期列 > --date > 交互式询问
+    # 日期优先级：--date 显式指定 > 文件名 > 日期列 > 交互式询问
     default_date = None
     filename_date = extract_date_from_filename(path)
     has_date = FIELD_DT in data[0]
-    if filename_date is not None:
+    if date_arg:
+        if not date_arg.isdigit() or len(date_arg) != 8:
+            print(f'日期格式错误: {date_arg!r}，应为 8 位数字如 20260906')
+            return 2
+        default_date = int(date_arg)
+        print(f'使用 --date 指定日期: {default_date}')
+    elif filename_date is not None:
         default_date = filename_date
         print(f'从文件名提取日期: {default_date}')
     elif not has_date:
-        if date_arg:
-            default_date = date_arg
-        else:
-            default_date = input('Excel 里没有日期列，请输入日期(YYYYMMDD): ').strip()
+        default_date = input('Excel 里没有日期列，请输入日期(YYYYMMDD): ').strip()
         if not default_date.isdigit() or len(default_date) != 8:
             print(f'日期格式错误: {default_date!r}，应为 8 位数字如 20260906')
             return 2
