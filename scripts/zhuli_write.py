@@ -6,7 +6,10 @@
   ID=202 → 主买净额（日期, 数值）
 
 用法：
-  python3 zhuli_write.py <excel文件路径> [--dry-run]
+  python3 zhuli_write.py <excel文件路径> [--date YYYYMMDD] [--dry-run]
+
+  --date YYYYMMDD：文件里没有日期列时，统一用这个日期填所有记录；
+                   不传 --date 且文件无日期列时，会交互式提示输入日期。
 
 支持两种输入（自动识别）：
   1. 通达信导出的「.xls」——实为 Tab 分隔文本（GBK）
@@ -91,7 +94,16 @@ def load_xlsx(path):
 # ---------- 解析 .xls（Tab 分隔文本）----------
 def load_tsv(path):
     raw = open(path, 'rb').read()
-    text = raw.decode('gbk', errors='replace')
+    # 编码自动识别：UTF-8 优先，失败回退 GBK/GB18030
+    text = None
+    for enc in ('utf-8-sig', 'utf-8', 'gb18030', 'gbk'):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        text = raw.decode('gbk', errors='replace')
     if '\r\n' in text:
         lines = text.split('\r\n')
     else:
@@ -117,8 +129,9 @@ def load_rows(path):
     return load_tsv(path)
 
 
-def build(data):
-    """data: list[dict{列名:值}] -> (dict201, dict202)  key=市场标志_代码 -> {日期int: 数值float}"""
+def build(data, default_date=None):
+    """data: list[dict{列名:值}] -> (dict201, dict202)  key=市场标志_代码 -> {日期int: 数值float}
+    default_date: 文件无日期列时，所有记录统一填这个日期。"""
     d201 = defaultdict(dict)
     d202 = defaultdict(dict)
     for row in data:
@@ -129,10 +142,13 @@ def build(data):
         fl = market_flag(code)
         if fl < 0:
             continue
-        dt_s = (row.get(FIELD_DT) or '').strip()
-        if not dt_s.isdigit():
-            continue
-        dt = int(dt_s)
+        if default_date is not None:
+            dt = default_date
+        else:
+            dt_s = (row.get(FIELD_DT) or '').strip()
+            if not dt_s.isdigit():
+                continue
+            dt = int(dt_s)
         key = f'{fl}_{code}'
         v7 = _num(row.get(FIELD_ZL))
         v10 = _num(row.get(FIELD_ZM))
@@ -220,8 +236,27 @@ def main():
     args = [a for a in sys.argv[1:]]
     dry_run = '--dry-run' in args
     args = [a for a in args if a != '--dry-run']
+
+    # 解析 --date YYYYMMDD（文件无日期列时用）
+    date_arg = None
+    rest = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == '--date' and i + 1 < len(args):
+            date_arg = args[i + 1]
+            i += 2
+            continue
+        if a.startswith('--date='):
+            date_arg = a.split('=', 1)[1]
+            i += 1
+            continue
+        rest.append(a)
+        i += 1
+    args = rest
+
     if not args:
-        print('用法: python3 zhuli_write.py <excel文件路径> [--dry-run]')
+        print('用法: python3 zhuli_write.py <excel文件路径> [--date YYYYMMDD] [--dry-run]')
         return 2
     path = args[0]
     if not os.path.exists(path):
@@ -229,7 +264,25 @@ def main():
         return 2
 
     data = load_rows(path)
-    d201, d202 = build(data)
+    if not data:
+        print('文件没有数据行')
+        return 2
+
+    # 判断是否有日期列；无则取 --date 或交互式询问
+    has_date = FIELD_DT in data[0]
+    default_date = None
+    if not has_date:
+        if date_arg:
+            default_date = date_arg
+        else:
+            default_date = input('Excel 里没有日期列，请输入日期(YYYYMMDD): ').strip()
+        if not default_date.isdigit() or len(default_date) != 8:
+            print(f'日期格式错误: {default_date!r}，应为 8 位数字如 20260906')
+            return 2
+        default_date = int(default_date)
+        print(f'使用日期: {default_date}')
+
+    d201, d202 = build(data, default_date)
 
     w201, c201, a201, nd1, cl201, rm201 = write_files(d201, 'signals_user_201', dry_run)
     w202, c202, a202, nd2, cl202, rm202 = write_files(d202, 'signals_user_202', dry_run)
