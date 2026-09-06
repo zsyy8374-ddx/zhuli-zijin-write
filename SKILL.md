@@ -27,7 +27,11 @@ python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文�
 python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文件路径>" --dry-run
 ```
 
-**日期处理**：文件有「日期」列 → 用列内日期；文件没有「日期」列 → 用 `--date` 指定的日期（或交互式问董哥要日期），所有记录统一填这个日期。
+**日期处理（优先级从高到低）**：
+1. **文件名里的 8 位日期**（如 `主力资金20260906.xls`、`主力资金_2026-09-06.xls`）
+2. 文件里的「日期」列
+3. `--date` 参数
+4. 交互式问董哥要日期（统一填所有记录）
 
 ## 输入格式（自动识别）
 
@@ -64,4 +68,4 @@ python3 ~/.openclaw/skills/zhuli-zijin-write/scripts/zhuli_write.py "<excel文�
 
 ## 更新记录
 
-- 2026-09-06 v1.2：支持文件无「日期」列 —— 用 `--date YYYYMMDD` 或交互式问董哥要日期，统一填；v1.1 改为「覆盖当天数据」语义
+- 2026-09-06 v1.3：日期优先级加入「文件名提取」（文件名 8 位日期 > 日期列 > --date > 交互询问）；v1.2 支持无日期列统一填
