@@ -33,7 +33,17 @@ import zipfile
 from collections import defaultdict
 from xml.etree import ElementTree as ET
 
-SIG = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/T0002/signals'
+IS_WINDOWS = (os.name == 'nt')
+
+if IS_WINDOWS:
+    SIG = r'D:\GP\通达信金融终端(开心果交易版)V2026\T0002\signals'
+    DEFAULT_DIR = r'D:\GP\通达信金融终端(开心果交易版)V2026\T0002\export'
+    SH_INDEX_DAY = r'D:\GP\通达信金融终端(开心果交易版)V2026\vipdoc\sh\lday\sh000001.day'
+else:
+    SIG = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/T0002/signals'
+    DEFAULT_DIR = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/T0002/export'
+    SH_INDEX_DAY = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/vipdoc/sh/lday/sh000001.day'
+
 NS = '{http://schemas.openxmlformats.org/spreadsheetml/2006/main}'
 
 FIELD_CODE = '代码'
@@ -42,9 +52,7 @@ FIELD_ZM = '主买净额'
 FIELD_DT = '日期'
 
 # 默认输入文件夹（董哥 2026-09-06 指定）
-DEFAULT_DIR = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/T0002/export'
 # 交易日判断用：上证指数日线（有记录=交易日）
-SH_INDEX_DAY = '/mnt/d/GP/通达信金融终端(开心果交易版)V2026/vipdoc/sh/lday/sh000001.day'
 
 
 def market_flag(code: str) -> int:
@@ -72,7 +80,9 @@ def extract_date_from_filename(path):
 
 
 def to_wsl_path(p):
-    """Windows 盘符路径 D:/... 或 D:\\... -> /mnt/d/...（WSL 下运行用）。"""
+    """Windows 盘符路径 D:/... 或 D:\\... -> /mnt/d/...（仅 WSL 下转换；Windows 下原样返回）。"""
+    if IS_WINDOWS:
+        return p
     m = re.match(r'^([A-Za-z]):[\\/](.*)$', p)
     if m:
         return '/mnt/' + m.group(1).lower() + '/' + m.group(2).replace('\\', '/')
